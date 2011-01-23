@@ -32,6 +32,9 @@
 #include "support.h"
 
 #include "render_scalers.h"
+#if defined(__SSE__)
+#include <xmmintrin.h>
+#endif
 
 Render_t render;
 ScalerLineHandler_t RENDER_DrawLine;
@@ -100,24 +103,40 @@ static void RENDER_StartLineHandler(const void * s) {
 	if (s) {
 		const Bitu *src = (Bitu*)s;
 		Bitu *cache = (Bitu*)(render.scale.cacheRead);
-		for (Bits x=render.src.start;x>0;) {
-			if (GCC_UNLIKELY(src[0] != cache[0])) {
-				if (!GFX_StartUpdate( render.scale.outWrite, render.scale.outPitch )) {
-					RENDER_DrawLine = RENDER_EmptyLineHandler;
-					return;
-				}
-				render.scale.outWrite += render.scale.outPitch * Scaler_ChangedLines[0];
-				RENDER_DrawLine = render.scale.lineHandler;
-				RENDER_DrawLine( s );
-				return;
+		Bits count = render.src.start;
+#if defined(__SSE__)
+		if(sse2_available) {
+			static const Bitu simd_inc = 16/SIZEOF_INT_P;
+			while (count >= simd_inc) {
+				__m128i v = _mm_loadu_si128((const __m128i*)src);
+				__m128i c = _mm_loadu_si128((const __m128i*)cache);
+				__m128i cmp = _mm_cmpeq_epi32(v, c);
+				if (GCC_UNLIKELY(_mm_movemask_epi8(cmp) != 0xFFFF))
+					goto cacheMiss;
+				count-=simd_inc; src+=simd_inc; cache+=simd_inc;
 			}
-			x--; src++; cache++;
+		}
+#endif
+		while (count) {
+			if (GCC_UNLIKELY(src[0] != cache[0]))
+				goto cacheMiss;
+			count--; src++; cache++;
 		}
 	}
+cacheHit:
 	render.scale.cacheRead += render.scale.cachePitch;
 	Scaler_ChangedLines[0] += Scaler_Aspect[ render.scale.inLine ];
 	render.scale.inLine++;
 	render.scale.outLine++;
+	return;
+cacheMiss:
+	if (!GFX_StartUpdate( render.scale.outWrite, render.scale.outPitch )) {
+		RENDER_DrawLine = RENDER_EmptyLineHandler;
+		return;
+	}
+	render.scale.outWrite += render.scale.outPitch * Scaler_ChangedLines[0];
+	RENDER_DrawLine = render.scale.lineHandler;
+	RENDER_DrawLine( s );
 }
 
 static void RENDER_FinishLineHandler(const void * s) {
