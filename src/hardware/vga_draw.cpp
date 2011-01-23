@@ -373,16 +373,34 @@ static Bit8u * VGA_TEXT_Draw_Line(Bitu vidstart, Bitu line) {
 	Bits font_addr;
 	Bit32u * draw=(Bit32u *)TempLine;
 	const Bit8u* vidmem = VGA_Text_Memwrap(vidstart);
-	for (Bitu cx=0;cx<vga.draw.blocks;cx++) {
-		Bitu chr=vidmem[cx*2];
-		Bitu col=vidmem[cx*2+1];
-		Bitu font=vga.draw.font_tables[(col >> 3)&1][chr*32+line];
-		Bit32u mask1=TXT_Font_Table[font>>4] & FontMask[col >> 7];
-		Bit32u mask2=TXT_Font_Table[font&0xf] & FontMask[col >> 7];
-		Bit32u fg=TXT_FG_Table[col&0xf];
-		Bit32u bg=TXT_BG_Table[col>>4];
-		*draw++=(fg&mask1) | (bg&~mask1);
-		*draw++=(fg&mask2) | (bg&~mask2);
+	//assert(FontMask[0] == 0xffffffff);
+	if (FontMask[1] == 0) {
+		for (Bitu cx=0;cx<vga.draw.blocks;cx++) {
+			Bitu chr=vidmem[cx*2];
+			Bitu col=vidmem[cx*2+1];
+			Bitu font=vga.draw.font_tables[(col >> 3)&1][chr*32+line];
+			Bit32u font_mask = (((Bit32s)col) << 24) >> 31;
+			font_mask = ~font_mask;
+			Bit32u mask1=TXT_Font_Table[font>>4] & font_mask;
+			Bit32u mask2=TXT_Font_Table[font&0xf] & font_mask;
+			Bit32u fg=TXT_FG_Table[col&0xf];
+			Bit32u bg=TXT_BG_Table[col>>4];
+			*draw++=(fg&mask1) | (bg&~mask1);
+			*draw++=(fg&mask2) | (bg&~mask2);
+		}
+	} else {
+		//assert(FontMask[1] == 0xffffffff);
+		for (Bitu cx=0;cx<vga.draw.blocks;cx++) {
+			Bitu chr=vidmem[cx*2];
+			Bitu col=vidmem[cx*2+1];
+			Bitu font=vga.draw.font_tables[(col >> 3)&1][chr*32+line];
+			Bit32u mask1=TXT_Font_Table[font>>4];
+			Bit32u mask2=TXT_Font_Table[font&0xf];
+			Bit32u fg=TXT_FG_Table[col&0xf];
+			Bit32u bg=TXT_BG_Table[col>>4];
+			*draw++=(fg&mask1) | (bg&~mask1);
+			*draw++=(fg&mask2) | (bg&~mask2);
+		}
 	}
 	if (!vga.draw.cursor.enabled || !(vga.draw.cursor.count&0x8)) goto skip_cursor;
 	font_addr = (vga.draw.cursor.address-vidstart) >> 1;
