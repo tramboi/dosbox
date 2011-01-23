@@ -37,6 +37,11 @@ void DOSBOX_SetNormalLoop();
 
 void DOSBOX_Init(void);
 
+#ifdef __SSE__
+extern bool sse1_available;
+extern bool sse2_available;
+#endif
+
 class Config;
 extern Config * control;
 

@@ -129,6 +129,36 @@ Bit32s ticksDone;
 Bit32u ticksScheduled;
 bool ticksLocked;
 
+#ifdef __SSE__
+bool sse1_available = false;
+bool sse2_available = false;
+
+#ifdef __GNUC__
+#define cpuid(func,ax,bx,cx,dx)\
+	__asm__ __volatile__ ("cpuid":\
+	"=a" (ax), "=b" (bx), "=c" (cx), "=d" (dx) : "a" (func));
+#endif
+
+void CheckSSESupport()
+{
+#ifdef __GNUC__
+	Bitu a, b, c, d;
+	cpuid(1, a, b, c, d);
+	if((d >> 26) & 1) {
+		sse1_available = true;
+		sse2_available = true;
+		LOG_MSG("SSE2 available");
+	} else if((d >> 25) & 1) {
+		sse1_available = true;
+		sse2_available = false;
+		LOG_MSG("SSE1 available");
+	}
+#else
+	LOG_MSG("Can't check if SSE is available... sorry.");
+#endif
+}
+#endif
+
 static Bitu Normal_Loop(void) {
 	Bits ret;
 	while (1) {
@@ -312,6 +342,11 @@ static void DOSBOX_RealInit(Section * sec) {
 
 
 void DOSBOX_Init(void) {
+
+#ifdef __SSE__
+	CheckSSESupport();
+#endif
+
 	Section_prop * secprop;
 	Section_line * secline;
 	Prop_int* Pint;
