@@ -186,8 +186,32 @@ void MEM_BlockRead(PhysPt pt,void * data,Bitu size) {
 
 void MEM_BlockWrite(PhysPt pt,void const * const data,Bitu size) {
 	Bit8u const * read = reinterpret_cast<Bit8u const * const>(data);
-	while (size--) {
-		mem_writeb_inline(pt++,*read++);
+	if (size==0)
+		return;
+
+	if ((pt >> 12) == ((pt+size-1)>>12)) { // Always same TLB entry
+		HostPt tlb_addr=get_tlb_write(pt);
+		if (!tlb_addr) {
+			Bit8u val = *read++;
+			get_tlb_writehandler(pt)->writeb(pt,val);
+			tlb_addr=get_tlb_write(pt);
+			pt++; size--;
+			if (!tlb_addr) {
+				// Slow path
+				while (size--) {
+					mem_writeb_inline(pt++,*read++);
+				}
+				return;
+			}
+		}
+		// Fast path
+		memcpy(tlb_addr+pt, read, size);
+	}
+	else {
+		Bitu current = (((pt>>12)+1)<<12) - pt;
+		Bitu remainder = size - current;
+		MEM_BlockWrite(pt, data, current);
+		MEM_BlockWrite(pt+current, data+current, remainder);
 	}
 }
 
